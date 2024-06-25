@@ -37,9 +37,10 @@ func middle(str string) int {
 type jsonFileWithCodes struct {
 	Operations []int    `json:"operations"`
 	Meaning    []string `json:"meanings"`
+	Key        []string `json:"key" `
 }
 
-func readOperationCodes(operationCodesFile string, logger *zap.Logger) ([]int, map[int]string, error) {
+func readOperationCodes(operationCodesFile string, logger *zap.Logger) (map[int]string, map[string][]int, error) {
 	codes := jsonFileWithCodes{}
 	fileBytes, _ := os.ReadFile(operationCodesFile)
 	err := json.Unmarshal(fileBytes, &codes)
@@ -49,10 +50,15 @@ func readOperationCodes(operationCodesFile string, logger *zap.Logger) ([]int, m
 		return nil, nil, err
 	}
 	var meaningMap = make(map[int]string)
+	var kindMap = make(map[string][]int)
 	for i, operation := range codes.Operations {
 		meaningMap[operation] = codes.Meaning[i]
+		if _, ok := kindMap[codes.Key[i]]; !ok {
+			kindMap[codes.Key[i]] = make([]int, 0)
+		}
+		kindMap[codes.Key[i]] = append(kindMap[codes.Key[i]], operation)
 	}
-	return codes.Operations, meaningMap, nil
+	return meaningMap, kindMap, nil
 }
 
 func validCode(codes []int, operation int) bool {
@@ -74,7 +80,7 @@ func Read(fileName string, operationCodesFile string, logger *zap.Logger) ([]Que
 		return nil, nil, nil, nil
 	}
 	defer file.Close()
-	codes, codeMeanings, err := readOperationCodes(operationCodesFile, logger)
+	codeMeanings, kindMap, err := readOperationCodes(operationCodesFile, logger)
 	if err != nil {
 		return nil, nil, nil, nil
 	}
@@ -89,9 +95,10 @@ func Read(fileName string, operationCodesFile string, logger *zap.Logger) ([]Que
 		str := strings.Split(scan.Text(), " ")
 		if len(str) == 4 {
 			code = middle(str[1])
-			if validCode(codes, code) {
-				logger.Info("Нет операции с таким кодом в списке", zap.Int(
-					"номер строки", stringNumber), zap.Int("номер операции", code))
+			if validCode(kindMap["чтение"], code) {
+				logger.Info("Нет операции с таким кодом в списке или вы перепутали коды местами", zap.Int(
+					"номер строки", stringNumber), zap.Int("номер операции, введённой вами", code), zap.Any("коды чтения",
+					kindMap["чтение"]))
 				continue
 			}
 			object := Query{
@@ -102,9 +109,10 @@ func Read(fileName string, operationCodesFile string, logger *zap.Logger) ([]Que
 			isQueryTypeSlice = append(isQueryTypeSlice, true)
 		} else if len(str) == 5 {
 			code = middle(str[1])
-			if validCode(codes, code) {
-				logger.Info("Нет операции с таким кодом в списке", zap.Int(
-					"номер строки", stringNumber), zap.Int("номер операции", code))
+			if validCode(kindMap["запись"], code) {
+				logger.Info("Нет операции с таким кодом в списке или вы перепутали коды местами", zap.Int(
+					"номер строки", stringNumber), zap.Int("номер операции, введённой вами", code), zap.Any("коды чтения",
+					kindMap["запись"]))
 				continue
 			}
 			object := WriteQuery{
